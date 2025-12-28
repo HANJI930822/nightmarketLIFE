@@ -37,6 +37,13 @@
             <div id="customer-layer"></div>
         </div>
 
+        <div id="extra-panel" style="text-align:center; margin-top:10px;">
+            <button id="btn-create-stall" class="action-btn" style="background:#8e44ad; color:white;">✨ 研發新攤位 ($5000)</button>
+            <button id="btn-clean-all" class="action-btn" style="background:#27ae60; color:white;">🧹 請清潔工 ($500)</button>
+            <button id="btn-adventure" class="action-btn" style="background:#e67e22; color:white;">🗺️ 外出冒險</button>
+            <button id="btn-kitchen" class="action-btn" style="background:#d35400; color:white;">🔥 研發廚房</button>
+        </div>
+
         <div id="ui-panel"></div>
     </div>
 
@@ -62,6 +69,81 @@
             <h2 id="story-title">標題</h2>
             <div id="story-text">內容...</div>
             <button id="story-btn" class="action-btn" style="margin-top:20px; width:100%;">確定</button>
+        </div>
+    </div>
+
+    <div id="creator-modal" class="modal hidden">
+        <div class="modal-content">
+            <h2>✨ 研發新美食</h2>
+            
+            <div class="control-group">
+                <label>攤位名稱:</label>
+                <input type="text" id="new-stall-name" placeholder="例如：超級大熱狗">
+            </div>
+
+            <div class="control-group">
+                <label>選擇圖示:</label>
+                <select id="new-stall-icon" style="font-size:20px; padding:5px;">
+                    <option value="🍔">🍔</option> <option value="🍟">🍟</option>
+                    <option value="🍕">🍕</option> <option value="🥪">🥪</option>
+                    <option value="🍜">🍜</option> <option value="🍣">🍣</option>
+                    <option value="🍦">🍦</option> <option value="🍩">🍩</option>
+                    <option value="🍺">🍺</option> <option value="🥣">🥣</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label>類型:</label>
+                <select id="new-stall-category">
+                    <option value="food">主食 (高價/慢)</option>
+                    <option value="snack">小吃 (低價/快)</option>
+                    <option value="drink">飲料 (高利潤)</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label>定價等級:</label>
+                <input type="range" id="new-stall-price" min="1" max="5" value="3">
+                <p>預估售價: $<span id="preview-price">0</span> / 成本: $<span id="preview-cost">0</span></p>
+            </div>
+
+            <button id="btn-confirm-create" class="action-btn upgrade">💰 支付 $5000 研發</button>
+            <button onclick="document.getElementById('creator-modal').classList.add('hidden')" class="action-btn">取消</button>
+        </div>
+    </div>
+
+    <div id="adventure-modal" class="modal hidden">
+        <div class="modal-content" style="width: 500px;">
+            <h2>🗺️ 選擇冒險地點</h2>
+            <div id="location-list" class="grid-list">
+                </div>
+            <div id="adventure-status" style="margin-top:20px; color:#f1c40f;">狀態: 閒置中</div>
+            <button onclick="document.getElementById('adventure-modal').classList.add('hidden')" class="action-btn">離開</button>
+        </div>
+    </div>
+
+    <div id="kitchen-modal" class="modal hidden">
+        <div class="modal-content" style="width: 500px;">
+            <h2>🎒 背包 & 🔥 合成</h2>
+            
+            <div class="inventory-section">
+                <p>點擊兩個食材進行合成：</p>
+                <div id="inventory-grid" class="grid-list">
+                    </div>
+            </div>
+
+            <div class="crafting-section" style="margin-top:20px; border-top:1px solid #555; padding-top:10px;">
+                <div id="crafting-slot">
+                    <span id="slot-1" class="slot empty">➕</span>
+                    <span style="font-size:20px;">+</span>
+                    <span id="slot-2" class="slot empty">➕</span>
+                    <span style="font-size:20px;">=</span>
+                    <span id="slot-result">❓</span>
+                </div>
+                <button id="btn-craft" class="action-btn upgrade" disabled>開始研發</button>
+            </div>
+
+            <button onclick="document.getElementById('kitchen-modal').classList.add('hidden')" class="action-btn" style="margin-top:10px;">關閉</button>
         </div>
     </div>
 

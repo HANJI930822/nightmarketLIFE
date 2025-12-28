@@ -47,6 +47,7 @@ const MARKETS = {
         difficulty: "地獄",
         layoutType: "single" // 關鍵設定：單行道
     }
+    
 };
 
 // === 攤位分類 ===
@@ -57,20 +58,111 @@ const CATEGORIES = {
     'game': '🎯 娛樂',
     'facility': '🚧 設施'
 };
+const ITEMS = {
+    'flour': { name: "特級麵粉", icon: "🥡" },
+    'pork': { name: "溫體豬肉", icon: "🥩" },
+    'spices': { name: "秘傳香料", icon: "🧂" },
+    'seafood': { name: "現撈海鮮", icon: "🦞" },
+    'milk': { name: "高大鮮乳", icon: "🥛" },
+    'gold_leaf': { name: "食用金箔", icon: "✨" }, // 稀有
+    'trash': { name: "失敗的料理", icon: "💩" }
+};
+const LOCATIONS = {
+    'market': {
+        name: "早市菜市場",
+        desc: "阿嬤常去的地方，原料便宜但普通。",
+        cost: 500,
+        time: 5000, // 5秒
+        drops: ['flour', 'pork', 'milk'], // 可能掉落物
+        dropRate: 0.8 // 掉落率
+    },
+    'port': {
+        name: "南方澳漁港",
+        desc: "空氣中充滿海味，可以買到新鮮海產。",
+        cost: 1500,
+        time: 10000, // 10秒
+        drops: ['seafood', 'spices'],
+        dropRate: 0.6
+    },
+    'mansion': {
+        name: "信義區豪宅",
+        desc: "據說有錢人都吃金箔...但也可能空手而回。",
+        cost: 5000,
+        time: 20000, // 20秒
+        drops: ['gold_leaf', 'spices'],
+        dropRate: 0.3 // 低機率
+    }
+};
 
+// === 3. 合成配方 (原料組合 -> 解鎖攤位) ===
+const RECIPES = [
+    {
+        inputs: ['flour', 'pork'],
+        result: 'soup_dumpling' // 小籠包
+    },
+    {
+        inputs: ['seafood', 'spices'],
+        result: 'grilled_squid' // 烤魷魚
+    },
+    {
+        inputs: ['milk', 'gold_leaf'],
+        result: 'gold_bubble_tea' // 黃金珍奶
+    }
+];
 // === 劇情文本 ===
 const PROLOGUE = {
     title: "傳承的開始",
     text: "這是一塊荒廢已久的空地...<br><br>你的爺爺曾是這裡叱吒風雲的夜市大亨，臨終前他將這塊地交給了你。<br>「年輕人，台灣的夜市精神不能斷！」<br><br>手裡握著僅存的創業基金，你看著這片雜草叢生的土地，決心要讓這裡重現當年的繁華光景！"
 };
-
+const COMBOS = [
+    { name: "罪惡宵夜", targets: ['chicken_fillet', 'bubble_tea'], bonus: 0.25, msg: "🐔+🧋 爽！" },
+    { name: "懷舊時光", targets: ['sausage', 'pinball'], bonus: 0.2, msg: "🌭+🎰 經典！" },
+    { name: "親子同樂", targets: ['sweet_potato', 'claw_machine'], bonus: 0.2, msg: "🍠+👾 溫馨！" },
+    { name: "賭徒套餐", targets: ['sausage', 'mahjong'], bonus: 0.3, msg: "🌭+🀄 發財！" }, // 賭香腸+麻將
+    { name: "吃飽喝足", targets: ['steak', 'lemon_tea'], bonus: 0.15, msg: "🥩+🍋 解膩！" },
+    { name: "臭味相投", targets: ['stinky_tofu', 'braised_pork'], bonus: 0.2, msg: "🍲+🍚 濃郁！" }
+];
 // === 隨機事件庫 ===
 const EVENTS = [
+    {
+        title: "📸 網紅直播探店",
+        text: "知名網紅來了！粉絲大暴動！<br><b>(效果：人流 x2 倍，持續 30 秒)</b>",
+        type: 'good',
+        duration: 30000, // 持續時間
+        effect: (state) => { 
+            state.trafficMultiplier = 2.0; 
+            state.activeEvents.push({ type: 'traffic', endVal: 1.0 }); // 標記結束後還原
+        }
+    },
+    {
+        title: "⛈️ 颱風過境",
+        text: "發布陸上颱風警報，民眾不敢出門。<br><b>(效果：人流剩下 20%，持續 20 秒)</b>",
+        type: 'bad',
+        duration: 20000,
+        effect: (state) => { 
+            state.trafficMultiplier = 0.2; 
+        }
+    },
+    {
+        title: "🧹 環保局宣導",
+        text: "政府推動垃圾不落地！<br><b>(效果：幫你清理所有路面垃圾)</b>",
+        type: 'good',
+        effect: (state) => { 
+            // 清除所有格子上的垃圾
+            for(let key in state.gridData) {
+                if(state.gridData[key].garbage > 0) {
+                    state.gridData[key].garbage = 0;
+                    updateCellVisual(state.gridData[key]);
+                }
+            }
+            alert("街道變得乾乾淨淨！");
+        }
+    },
     {
         title: "📸 百萬YouTuber探店",
         text: "知名網紅『千千進食中』突然出現在你的夜市！粉絲們聞風而至！<br><b>(效果：人氣爆發，獲得 $2000 贊助)</b>",
         type: 'good',
-        effect: (state) => { state.money += 2000; }
+        effect: (state) => { state.money += 1000; }
     },
     {
         title: "⛈️ 午後雷陣雨",
@@ -209,4 +301,22 @@ const BUILDINGS = {
         name: "麻將賓果", price: 700, icon: "🀄", color: "#27ae60", category: 'game',
         revenue: 150, cost: 10, cookTime: 6000, baseCapacity: 2
     }
+    
 };
+Object.assign(BUILDINGS, {
+    'soup_dumpling': {
+        name: "爆漿小籠包", price: 1000, icon: "🥟", color: "#ecf0f1", category: 'food',
+        revenue: 200, cost: 20, cookTime: 3000, baseCapacity: 4,
+        isLocked: true // 關鍵：預設鎖定
+    },
+    'grilled_squid': {
+        name: "深海烤魷魚", price: 1500, icon: "🦑", color: "#e67e22", category: 'snack',
+        revenue: 180, cost: 30, cookTime: 2500, baseCapacity: 3,
+        isLocked: true
+    },
+    'gold_bubble_tea': {
+        name: "皇家金箔奶", price: 8888, icon: "🏆", color: "#f1c40f", category: 'drink',
+        revenue: 500, cost: 100, cookTime: 5000, baseCapacity: 2,
+        isLocked: true
+    }
+});

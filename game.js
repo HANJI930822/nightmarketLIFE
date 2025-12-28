@@ -12,6 +12,14 @@ let state = {
     mapSize: CONFIG.startGridSize,
     uiCategory: 'facility',
     marketName: "", // 預設顯示設施頁
+    trafficMultiplier: 1.0, // 人流倍率
+    activeEvents: [],       // 進行中的事件
+    totalGarbage: 0,        // 目前場上垃圾總數
+    customBuildings: {},     // 玩家自製的攤位
+    inventory: {}, // 格式: { 'flour': 5, 'pork': 2 }
+    unlockedStalls: [], // 已解鎖的攤位 ID
+    adventureTimer: null,
+    selectedIngredients: [] // 合成選中的兩個原料
 };
 
 let currentEditingKey = null;
@@ -24,6 +32,21 @@ window.onload = function() {
 // 1. 初始化選擇畫面
 function initStartScreen() {
     const container = document.getElementById('market-selection');
+    container.innerHTML = ""; // 清空
+
+    // 新增：如果有存檔，顯示讀取按鈕
+    if(localStorage.getItem('nightMarketSave')) {
+        let loadBtn = document.createElement('button');
+        loadBtn.className = 'action-btn';
+        loadBtn.style.cssText = "width: 100%; margin-bottom: 20px; background: #27ae60; font-size: 1.2em;";
+        loadBtn.innerText = "📂 讀取上次的進度";
+        loadBtn.onclick = () => {
+            if(loadGame()) {
+                 document.getElementById('start-screen').style.display = 'none';
+            }
+        };
+        document.querySelector('.naming-section').appendChild(loadBtn);
+    }
     
     for (let key in MARKETS) {
         let m = MARKETS[key];
@@ -58,6 +81,13 @@ function startGame(marketKey) {
     state.marketData = MARKETS[marketKey];
     state.money = state.marketData.startMoney;
     state.mapSize = CONFIG.startGridSize;
+    state.trafficMultiplier = 1.0;
+    state.totalGarbage = 0;
+    state.activeEvents = [];
+    state.inventory = {};
+    state.unlockedStalls = []; // 重置解鎖列表
+    state.selectedIngredients = [];
+    bindAdventureButtons(); // 綁定新按鈕
 
     // UI 切換
     document.getElementById('start-screen').style.display = 'none';
@@ -79,32 +109,50 @@ function startGame(marketKey) {
         // 劇情看完後，啟動隨機事件系統
         initEventSystem();
     });
+    bindExtraButtons();
     // 綁定擴建按鈕
     const expandBtn = document.getElementById('btn-expand-map');
     if(expandBtn) expandBtn.onclick = expandMap;
 }
 function initEventSystem() {
-    // 每 45 秒嘗試觸發一次事件
     if (state.eventTimer) clearInterval(state.eventTimer);
 
+    // 檢查過期事件 (每秒檢查一次)
+    setInterval(() => {
+        // 如果有 traffic 倍率改變，且時間到了，要還原嗎？
+        // 這裡簡化處理：事件只是一次性的，但如果是有持續時間的(duration)，需要還原邏輯
+        // 為了簡單，我們讓事件的 effect 直接設定 setTimeout 來還原
+    }, 1000);
+
+    // 觸發新事件
     state.eventTimer = setInterval(() => {
-        // 30% 機率觸發事件，避免太頻繁
         if (Math.random() > 0.3) return; 
 
-        // 隨機選一個事件
         const event = EVENTS[Math.floor(Math.random() * EVENTS.length)];
         
         // 執行效果
         if (event.effect) {
             event.effect(state);
+            
+            // 如果有持續時間，設定定時器還原
+            if (event.duration && event.type === 'good') {
+                setTimeout(() => {
+                    state.trafficMultiplier = 1.0; // 還原
+                    // showFloatingText(document.body, "人潮恢復正常", "#fff");
+                }, event.duration);
+            }
+            if (event.duration && event.type === 'bad') {
+                setTimeout(() => {
+                    state.trafficMultiplier = 1.0; 
+                }, event.duration);
+            }
+            
             updateMoneyDisplay();
         }
-
-        // 顯示劇情框
         showStory(event.title, event.text);
-
-    }, 45000); // 45000 ms = 45秒
+    }, 45000);
 }
+
 function showStory(title, text, callback) {
     const modal = document.getElementById('story-modal');
     const titleEl = document.getElementById('story-title');
@@ -121,6 +169,40 @@ function showStory(title, text, callback) {
     };
 
     modal.classList.remove('hidden');
+}
+function bindExtraButtons() {
+    // 研發按鈕
+    document.getElementById('btn-create-stall').onclick = () => {
+        document.getElementById('creator-modal').classList.remove('hidden');
+        updateCreatorPreview(); // 更新預覽數值
+    };
+
+    // 清潔工按鈕
+    document.getElementById('btn-clean-all').onclick = () => {
+        if (state.money >= 500) {
+            state.money -= 500;
+            let cleaned = 0;
+            for(let key in state.gridData) {
+                if(state.gridData[key].garbage > 0) {
+                    state.gridData[key].garbage = 0;
+                    updateCellVisual(state.gridData[key]);
+                    cleaned++;
+                }
+            }
+            state.totalGarbage = 0;
+            updateMoneyDisplay();
+            alert(`清潔工清理了 ${cleaned} 處垃圾！`);
+        } else {
+            alert("資金不足 $500");
+        }
+    };
+
+    // 研發確認按鈕
+    document.getElementById('btn-confirm-create').onclick = createCustomStall;
+    
+    // 研發視窗的滑桿變動時更新預覽
+    document.getElementById('new-stall-price').oninput = updateCreatorPreview;
+    document.getElementById('new-stall-category').onchange = updateCreatorPreview;
 }
 // === 新增：地圖擴充邏輯 ===
 function expandMap() {
@@ -141,7 +223,75 @@ function expandMap() {
         alert("資金不足！");
     }
 }
+// === 5. 自製攤位 (Custom Stall) ===
 
+function updateCreatorPreview() {
+    const level = parseInt(document.getElementById('new-stall-price').value);
+    const cat = document.getElementById('new-stall-category').value;
+    
+    // 計算公式
+    let baseRev = 20;
+    let baseCost = 5;
+    
+    if (cat === 'food') { baseRev = 50; baseCost = 20; }
+    if (cat === 'drink') { baseRev = 40; baseCost = 10; }
+    
+    // 等級越高，利潤越高，但成本也越高
+    let revenue = baseRev * level;
+    let cost = baseCost * level;
+    
+    document.getElementById('preview-price').innerText = revenue;
+    document.getElementById('preview-cost').innerText = cost;
+}
+
+function createCustomStall() {
+    if (state.money < 5000) {
+        alert("資金不足 $5000");
+        return;
+    }
+
+    const name = document.getElementById('new-stall-name').value;
+    const icon = document.getElementById('new-stall-icon').value;
+    const cat = document.getElementById('new-stall-category').value;
+    const level = parseInt(document.getElementById('new-stall-price').value);
+
+    if (!name) { alert("請輸入名稱"); return; }
+
+    // 扣錢
+    state.money -= 5000;
+    updateMoneyDisplay();
+
+    // 產生 ID
+    const id = 'custom_' + Date.now();
+    
+    // 計算數值
+    let baseRev = 20, baseCost = 5, time = 2000;
+    if (cat === 'food') { baseRev=50; baseCost=20; time=4000; }
+    if (cat === 'snack') { baseRev=30; baseCost=10; time=2000; }
+    if (cat === 'drink') { baseRev=40; baseCost=10; time=1500; }
+
+    const newBuilding = {
+        name: name,
+        price: 500 * level, // 造價
+        icon: icon,
+        color: "#e056fd", // 自製攤位統一紫色，或可讓玩家選
+        category: cat,
+        revenue: baseRev * level,
+        cost: baseCost * level,
+        cookTime: time,
+        baseCapacity: 2 + Math.floor(level/2)
+    };
+
+    // 加入資料庫
+    BUILDINGS[id] = newBuilding;
+    
+    // 重新渲染 UI 以顯示新按鈕
+    initUI();
+    
+    // 關閉視窗
+    document.getElementById('creator-modal').classList.add('hidden');
+    alert(`研發成功！【${name}】上市了！`);
+}
 function getExpandCost() {
     // 因為現在地圖等級(mapSize)數字很大(從10起跳)
     // 如果用舊公式 500 * mapSize 會太貴
@@ -321,7 +471,7 @@ function initUI() {
     // 3. 根據目前分類篩選按鈕
     for (let key in BUILDINGS) {
         let data = BUILDINGS[key];
-        
+        if (data.isLocked && !state.unlockedStalls.includes(key)) continue;
         // 只顯示符合當前分類的按鈕
         if (data.category !== state.uiCategory) continue;
         
@@ -483,14 +633,70 @@ function startOperation(key) {
             if(data.queue.length > 0) updateStallVisual(data, `🧍${data.queue.length}`);
             else updateStallVisual(data, baseConfig.icon);
         }
-
+        if (data.type === 'trash_can') {
+         // 垃圾桶不需要排隊，它的邏輯是每隔一段時間清理周圍
+         if (data.timerId) clearInterval(data.timerId);
+         data.timerId = setInterval(() => {
+             cleanNearbyGarbage(data.x, data.y, 2); // 範圍 2
+         }, 5000); // 每 5 秒清理一次
+         return; // 垃圾桶不執行後面的烹飪邏輯
+    }
     }, 100); 
 }
+
+function cleanNearbyGarbage(cx, cy, range) {
+    let cleaned = 0;
+    for (let x = cx - range; x <= cx + range; x++) {
+        for (let y = cy - range; y <= cy + range; y++) {
+            let key = `${x},${y}`;
+            if (state.gridData[key] && state.gridData[key].garbage > 0) {
+                state.gridData[key].garbage = 0;
+                state.totalGarbage--;
+                updateCellVisual(state.gridData[key]);
+                cleaned++;
+            }
+        }
+    }
+    // 垃圾桶維護費：每清一個垃圾扣 $1 (可選)
+    if(cleaned > 0) showFloatingText(state.gridData[`${cx},${cy}`].cellElement, "🧹", "#3498db");
+}
+
+function checkCombo(key) {
+    const me = state.gridData[key];
+    if(!me) return 1.0;
+    
+    let bonus = 0;
+    const neighbors = [
+        {x: me.x, y: me.y - 1}, {x: me.x, y: me.y + 1},
+        {x: me.x - 1, y: me.y}, {x: me.x + 1, y: me.y}
+    ];
+
+    // 檢查周圍鄰居
+    neighbors.forEach(n => {
+        let nKey = `${n.x},${n.y}`;
+        let neighbor = state.gridData[nKey];
+        if(neighbor) {
+            // 檢查是否形成 Combo
+            COMBOS.forEach(combo => {
+                // 如果我是 A，鄰居是 B；或我是 B，鄰居是 A
+                if((combo.targets[0] === me.type && combo.targets[1] === neighbor.type) ||
+                   (combo.targets[1] === me.type && combo.targets[0] === neighbor.type)) {
+                    bonus += combo.bonus;
+                    // 偶爾顯示連動特效
+                    if(Math.random() > 0.95) showFloatingText(me.cellElement, combo.msg, "#ff9ff3");
+                }
+            });
+        }
+    });
+    return 1.0 + bonus;
+}
+
 function completeOrder(data, config) {
     let customer = data.queue.shift(); // 移除隊列第一人
+    let comboMultiplier = checkCombo(`${data.x},${data.y}`);
     
     // 計算收支
-    let revenue = Math.floor(config.revenue * data.level * data.priceMultiplier);
+    let revenue = Math.floor(config.revenue * data.level * data.priceMultiplier * comboMultiplier);
     let cost = config.cost; // 扣除成本
     let profit = revenue - cost;
 
@@ -670,29 +876,34 @@ function updateAttractiveness() {
     let total = 0;
     for(let key in state.gridData) {
         let item = state.gridData[key];
-        if (BUILDINGS[item.type].revenue > 0) { // 只有商店加分
+        if (BUILDINGS[item.type] && BUILDINGS[item.type].revenue > 0) {
             total += item.level;
         }
     }
+    // 垃圾懲罰：每個垃圾扣 1 點吸引力
+    total -= state.totalGarbage; 
+    if(total < 0) total = 0; // 最低為 0
+    
     state.totalAttractiveness = total;
 }
 
+// === 修改後的顧客移動邏輯 (平滑 + 隨機偏移版) ===
 function updateCustomers() {
     const layer = document.getElementById('customer-layer');
     
-    // 1. 建立人潮密度地圖
+    // 1. 建立密度地圖 (計算每格幾個人)
     let densityMap = {};
     state.customers.forEach(c => {
         let key = `${c.gx},${c.gy}`;
         densityMap[key] = (densityMap[key] || 0) + 1;
     });
 
-    // 2. 更新人數
-    let targetCount = Math.floor((5 + state.totalAttractiveness) * state.marketData.trafficRate);
+    // 更新介面人數
+    let targetCount = Math.floor((5 + state.totalAttractiveness) * state.marketData.trafficRate * state.trafficMultiplier);
     if (targetCount > 100) targetCount = 100;
     document.getElementById('people-display').innerText = state.customers.length;
 
-    // 3. 生成新顧客 (加入耐心設定)
+    // 2. 生成新顧客
     if (state.customers.length < targetCount) {
         let spawnPoints = findSpawnPoints();
         spawnPoints.sort(() => Math.random() - 0.5);
@@ -700,12 +911,22 @@ function updateCustomers() {
         if (spawnPoints.length > 0) {
             for (let pt of spawnPoints) {
                 let key = `${pt.x},${pt.y}`;
+                // 入口太擠就不生
                 if (densityMap[key] && densityMap[key] > 0) continue;
 
                 let cDiv = document.createElement('div');
                 cDiv.className = 'customer';
-                cDiv.style.left = (pt.x * 12 + 4) + 'px';
-                cDiv.style.top = (pt.y * 12 + 4) + 'px';
+                
+                // === 新增：隨機偏移量 (讓客人不會排一直線) ===
+                // 格子寬 12px，人寬 6px，所以有 6px 的空間可以亂走
+                let randX = Math.random() * 6; 
+                let randY = Math.random() * 6;
+
+                // 初始位置設定
+                let pixelX = pt.x * 12 + randX;
+                let pixelY = pt.y * 12 + randY;
+                cDiv.style.transform = `translate3d(${pixelX}px, ${pixelY}px, 0)`;
+                
                 layer.appendChild(cDiv);
 
                 state.customers.push({
@@ -714,36 +935,37 @@ function updateCustomers() {
                     lastGx: -1, lastGy: -1,
                     state: 'walking',
                     moveCooldown: 0,
-                    // === 新增：耐心值 (約 100 秒) ===
-                    // 如果一直找不到店，時間到就走人
-                    patience: 500 
+                    patience: 500,
+                    // 記住這個人的專屬偏移量
+                    offsetX: randX,
+                    offsetY: randY
                 });
                 break; 
             }
         }
     }
 
-    // 4. 移動與狀態更新
+    // 3. 移動邏輯
     for (let i = state.customers.length - 1; i >= 0; i--) {
         let c = state.customers[i];
 
-        // 狀態 A: 排隊 (排隊時也會消耗耐心，但比較慢，以免排太久生氣)
+        // 狀態 A: 排隊 (隱藏)
         if (c.state === 'queueing') {
             c.el.style.display = 'none';
-            // 這裡可以選擇要不要讓排隊也會不耐煩離開，目前先暫停
-            return;
+            continue;
         }
 
-        // 狀態 B: 吃東西 (回血? 或單純暫停)
+        // 狀態 B: 吃東西
         if (c.state === 'eating') {
             c.el.style.display = 'block';
             c.eatingTimer--;
             if (c.eatingTimer <= 0) {
                 c.state = 'walking';
-                c.patience = 500; // 吃飽了！心情變好，耐心重置
+                c.patience = 500;
                 c.el.style.backgroundColor = 'white';
+                tryDropGarbage(c.gx, c.gy);
             } else {
-                c.el.style.backgroundColor = '#f1c40f'; // 黃色：吃東西
+                c.el.style.backgroundColor = '#f1c40f'; // 黃色
             }
             continue; 
         }
@@ -751,27 +973,21 @@ function updateCustomers() {
         // 狀態 C: 走路
         if (c.state === 'walking') {
             c.el.style.display = 'block';
-
-            // === 核心修改：耐心機制 ===
             c.patience--;
 
-            // 1. 視覺警告：快沒耐心變紅色
-            if (c.patience < 150) {
-                c.el.style.backgroundColor = '#e74c3c'; // 紅色
-            } else {
-                c.el.style.backgroundColor = 'white';
-            }
+            // 耐心變色
+            if (c.patience < 150) c.el.style.backgroundColor = '#e74c3c';
+            else c.el.style.backgroundColor = 'white';
 
-            // 2. 時間到：離開遊戲
+            // 餓死離場
             if (c.patience <= 0) {
                 showTextAt(c.gx, c.gy, "😡餓!");
                 c.el.remove();
                 state.customers.splice(i, 1);
-                continue; // 直接處理下一個，跳過移動邏輯
+                continue;
             }
-            // ========================
 
-            // 檢查店家
+            // 進店判斷
             let shop = findShopAvailable(c.gx, c.gy);
             if (shop) {
                 shop.queue.push(c);
@@ -796,10 +1012,20 @@ function updateCustomers() {
                 c.lastGx = c.gx; c.lastGy = c.gy;
                 c.gx = nextMove.x; c.gy = nextMove.y;
                 
-                c.el.style.left = (c.gx * 12 + 4) + 'px';
-                c.el.style.top = (c.gy * 12 + 4) + 'px';
+                // === 關鍵修改：使用 transform 移動 + 加上隨機偏移 ===
+                // 這樣每個人走的路徑會稍微錯開，看起來比較自然
+                let stepRandX = Math.random() * 10; // 0~10px 的浮動範圍 (格子12px)
+                let stepRandY = Math.random() * 10; 
+                
+                let pixelX = c.gx * 12 + stepRandX;
+                let pixelY = c.gy * 12 + stepRandY;
+                
+                c.el.style.transform = `translate3d(${pixelX}px, ${pixelY}px, 0)`;
+
+                c.el.style.transform += ` rotate(${Math.random() * 30 - 15}deg)`;
+                
             } else {
-                // 死路移除
+                // 死路處理
                 if (c.lastGx !== -1 && Math.random() > 0.9) {
                     c.el.remove();
                     state.customers.splice(i, 1);
@@ -810,7 +1036,20 @@ function updateCustomers() {
         }
     }
 }
-
+function tryDropGarbage(x, y) {
+    // 30% 機率亂丟垃圾
+    if (Math.random() < 0.3) {
+        let key = `${x},${y}`;
+        // 確保該格子存在且是道路或空地 (不丟在別人攤位上)
+        if (state.gridData[key]) {
+            let cellData = state.gridData[key];
+            // 增加垃圾量
+            cellData.garbage = (cellData.garbage || 0) + 1;
+            state.totalGarbage++;
+            updateCellVisual(cellData);
+        }
+    }
+}
 function showTextAt(gx, gy, text) {
     const layer = document.getElementById('customer-layer');
     let floatEl = document.createElement('div');
@@ -934,12 +1173,11 @@ function getNextStep(currX, currY, lastX, lastY) {
         return state.gridData[k] && state.gridData[k].isRoad;
     });
 
-    // 2. 高機率走道路 (90%)，低機率亂鑽 (10%)
-    if (roadMoves.length > 0 && Math.random() < 0.9) {
+    if (roadMoves.length > 0 && Math.random() < 0.4) {
         return roadMoves[Math.floor(Math.random() * roadMoves.length)];
     }
 
-    // 3. 隨機選一個
+    // 隨機選一個 (亂鑽)
     return validMoves[Math.floor(Math.random() * validMoves.length)];
 }
 
@@ -1004,4 +1242,280 @@ function showFloatingText(cell, text) {
         floatEl.style.opacity = '0';
     }, 50);
     setTimeout(() => { floatEl.remove(); }, 1000);
+}
+function saveGame() {
+    // 過濾掉不能存的 DOM 物件 (如 cellElement, timerId, queue裡的DOM)
+    const saveData = {
+        money: state.money,
+        mapSize: state.mapSize,
+        marketName: state.marketName,
+        marketKey: state.marketData ? findMarketKey(state.marketData) : 'school', // 需反查 key
+        gridData: {}
+    };
+
+    // 只存關鍵數據
+    for(let key in state.gridData) {
+        let item = state.gridData[key];
+        saveData.gridData[key] = {
+            type: item.type,
+            level: item.level,
+            x: item.x,
+            y: item.y,
+            staff: item.staff,
+            capacityLevel: item.capacityLevel,
+            customName: item.customName
+        };
+    }
+
+    localStorage.setItem('nightMarketSave', JSON.stringify(saveData));
+    showFloatingText(document.body, "💾 遊戲已儲存！");
+}
+
+function loadGame() {
+    const json = localStorage.getItem('nightMarketSave');
+    if(!json) return false;
+
+    try {
+        const saved = JSON.parse(json);
+        
+        // 恢復基礎設定
+        startGame(saved.marketKey); // 這會重置 grid，所以要接著覆蓋
+        state.money = saved.money;
+        state.mapSize = saved.mapSize;
+        state.marketName = saved.marketName;
+        document.getElementById('night-market-title').innerText = `${state.marketName} `;
+        
+        // 恢復地圖與擴充按鈕
+        renderLockedArea();
+        updateExpandCost();
+
+        // 恢復建築
+        for(let key in saved.gridData) {
+            let item = saved.gridData[key];
+            // 找回格子 DOM
+            let cell = document.querySelector(`.cell[data-x="${item.x}"][data-y="${item.y}"]`);
+            if(cell) {
+                // 呼叫建造函式 (但要把錢補回來，因為 build 會扣錢)
+                let cost = BUILDINGS[item.type].price; // 簡易估算
+                state.money += cost; // 補錢
+                build(cell, key, item.type); // 蓋回去
+                
+                // 恢復等級與員工
+                let newData = state.gridData[key];
+                newData.level = item.level;
+                newData.staff = item.staff;
+                newData.capacityLevel = item.capacityLevel;
+                newData.customName = item.customName;
+                newData.maxQueue += (item.capacityLevel - 1) * 2;
+            }
+        }
+        updateMoneyDisplay();
+        return true;
+    } catch(e) {
+        console.error("讀取失敗", e);
+        return false;
+    }
+}
+
+// 輔助：反查 Market Key
+function findMarketKey(dataObj) {
+    for(let k in MARKETS) {
+        if(MARKETS[k] === dataObj) return k;
+    }
+    return 'school';
+}
+
+// === 自動存檔 (加在 initStartScreen 或 startGame 裡) ===
+// setInterval(saveGame, 60000); // 每分鐘自動存檔
+function bindAdventureButtons() {
+    // 打開冒險地圖
+    document.getElementById('btn-adventure').onclick = () => {
+        renderLocations();
+        document.getElementById('adventure-modal').classList.remove('hidden');
+    };
+
+    // 打開廚房
+    document.getElementById('btn-kitchen').onclick = () => {
+        state.selectedIngredients = []; // 重置選取
+        renderInventory();
+        updateCraftingUI();
+        document.getElementById('kitchen-modal').classList.remove('hidden');
+    };
+
+    // 執行合成
+    document.getElementById('btn-craft').onclick = executeCraft;
+}
+
+// --- 冒險邏輯 ---
+function renderLocations() {
+    const list = document.getElementById('location-list');
+    list.innerHTML = "";
+    
+    for (let key in LOCATIONS) {
+        let loc = LOCATIONS[key];
+        let div = document.createElement('div');
+        div.className = 'location-card';
+        div.innerHTML = `
+            <div style="font-size:30px;">🏔️</div>
+            <h4>${loc.name}</h4>
+            <small>$${loc.cost} / ${(loc.time/1000)}秒</small>
+            <p style="font-size:12px; color:#aaa;">${loc.desc}</p>
+        `;
+        div.onclick = () => goAdventure(key);
+        list.appendChild(div);
+    }
+}
+function goAdventure(locKey) {
+    if (state.adventureTimer) { alert("隊伍正在冒險中，請稍候！"); return; }
+    
+    const loc = LOCATIONS[locKey];
+    if (state.money < loc.cost) { alert("旅費不足！"); return; }
+    
+    state.money -= loc.cost;
+    updateMoneyDisplay();
+    
+    const statusEl = document.getElementById('adventure-status');
+    statusEl.innerText = `🚀 前往【${loc.name}】中...`;
+    
+    // 開始計時
+    state.adventureTimer = setTimeout(() => {
+        // 冒險結束
+        state.adventureTimer = null;
+        statusEl.innerText = "狀態: 閒置中";
+        
+        // 計算掉落 (簡單機率：必定掉落 1~2 個東西)
+        let drops = [];
+        let dropCount = 1 + Math.floor(Math.random() * 2); // 1 或 2 個
+        
+        for(let i=0; i<dropCount; i++) {
+            if (Math.random() < loc.dropRate) {
+                let itemKey = loc.drops[Math.floor(Math.random() * loc.drops.length)];
+                addItemToInventory(itemKey);
+                drops.push(ITEMS[itemKey].name);
+            }
+        }
+        
+        if (drops.length > 0) {
+            alert(`🎉 冒險歸來！獲得了：${drops.join(', ')}`);
+        } else {
+            alert("💸 這趟旅程什麼都沒找到...");
+        }
+    }, loc.time);
+}
+
+// --- 背包與合成邏輯 ---
+function addItemToInventory(key) {
+    state.inventory[key] = (state.inventory[key] || 0) + 1;
+}
+
+function renderInventory() {
+    const grid = document.getElementById('inventory-grid');
+    grid.innerHTML = "";
+    
+    // 如果背包是空的
+    if (Object.keys(state.inventory).length === 0) {
+        grid.innerHTML = "<p style='color:#666;'>背包空空如也，去冒險吧！</p>";
+        return;
+    }
+
+    for (let key in state.inventory) {
+        if (state.inventory[key] <= 0) continue;
+        
+        let item = ITEMS[key];
+        let slot = document.createElement('div');
+        slot.className = 'item-slot';
+        if (state.selectedIngredients.includes(key)) slot.classList.add('selected');
+        
+        slot.innerHTML = `
+            <div style="font-size:24px;">${item.icon}</div>
+            <div style="font-size:12px;">${item.name}</div>
+            <span class="item-count">x${state.inventory[key]}</span>
+        `;
+        
+        slot.onclick = () => toggleIngredient(key);
+        grid.appendChild(slot);
+    }
+}
+
+function toggleIngredient(key) {
+    const idx = state.selectedIngredients.indexOf(key);
+    if (idx >= 0) {
+        // 取消選取
+        state.selectedIngredients.splice(idx, 1);
+    } else {
+        // 加入選取 (最多選 2 個)
+        if (state.selectedIngredients.length < 2) {
+            state.selectedIngredients.push(key);
+        }
+    }
+    renderInventory();
+    updateCraftingUI();
+}
+
+function updateCraftingUI() {
+    const s1 = document.getElementById('slot-1');
+    const s2 = document.getElementById('slot-2');
+    const btn = document.getElementById('btn-craft');
+    
+    // 更新 Slot 1
+    if (state.selectedIngredients[0]) {
+        let item = ITEMS[state.selectedIngredients[0]];
+        s1.innerText = item.icon;
+        s1.classList.remove('empty');
+    } else {
+        s1.innerText = "➕";
+        s1.classList.add('empty');
+    }
+
+    // 更新 Slot 2
+    if (state.selectedIngredients[1]) {
+        let item = ITEMS[state.selectedIngredients[1]];
+        s2.innerText = item.icon;
+        s2.classList.remove('empty');
+    } else {
+        s2.innerText = "➕";
+        s2.classList.add('empty');
+    }
+    
+    // 按鈕狀態
+    btn.disabled = state.selectedIngredients.length !== 2;
+}
+
+function executeCraft() {
+    const [ing1, ing2] = state.selectedIngredients;
+    
+    // 檢查配方
+    let matchRecipe = RECIPES.find(r => {
+        return (r.inputs.includes(ing1) && r.inputs.includes(ing2));
+    });
+
+    // 扣除原料
+    state.inventory[ing1]--;
+    state.inventory[ing2]--;
+    
+    if (matchRecipe) {
+        const buildingKey = matchRecipe.result;
+        const building = BUILDINGS[buildingKey];
+        
+        // 檢查是否已經解鎖過
+        if (state.unlockedStalls.includes(buildingKey)) {
+            alert(`🤔 你已經研發過【${building.name}】了！原料浪費了...`);
+        } else {
+            // 成功解鎖！
+            state.unlockedStalls.push(buildingKey);
+            alert(`✨ 研發大成功！\n\n新攤位【${building.name}】解鎖了！\n快去建造列表看看！`);
+            
+            // 強制切換到該分類並刷新 UI，讓玩家立刻看到
+            state.uiCategory = building.category;
+            initUI(); 
+        }
+    } else {
+        alert("💥 碰！實驗失敗，變成了一堆黑暗料理...");
+        addItemToInventory('trash'); // 給垃圾當安慰獎
+    }
+    
+    // 重置介面
+    state.selectedIngredients = [];
+    renderInventory();
+    updateCraftingUI();
 }
