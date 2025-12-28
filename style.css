@@ -1,0 +1,290 @@
+body {
+    background-color: #222;
+    color: white;
+    font-family: "微軟正黑體", sans-serif;
+    text-align: center;
+    user-select: none;
+    margin: 0;
+    overflow: hidden; /* 防止捲動 */
+}
+
+/* === 起始畫面 === */
+#start-screen {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: #111;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+#market-selection {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.market-card {
+    background: #333;
+    border: 2px solid #555;
+    padding: 20px;
+    width: 200px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: transform 0.2s, border-color 0.2s;
+}
+
+.market-card:hover {
+    transform: translateY(-10px);
+    border-color: #f1c40f;
+    background: #444;
+}
+
+.market-card h3 { color: #f1c40f; margin-top: 0; }
+.difficulty-tag { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-bottom: 10px;}
+.diff-簡單 { background: #27ae60; }
+.diff-普通 { background: #2980b9; }
+.diff-困難 { background: #d35400; }
+.diff-地獄 { background: #c0392b; }
+
+/* === 遊戲主體 === */
+.hidden { display: none !important; }
+
+#game-container {
+    display: inline-block;
+    margin: 20px;
+    border: 8px solid #444;
+    padding: 0; /* 改為0以貼合 */
+    background-color: #333;
+    border-radius: 4px;
+    position: relative; /* 為了定位顧客 */
+}
+
+#grid {
+    display: grid;
+    /* 這裡的 gap 改為 0 或 1px，不然格子太小縫隙會很大 */
+    gap: 0px; 
+    background-color: #333;
+    border: 2px solid #333;
+}
+.cell.locked {
+    background-color: #111 !important;
+    pointer-events: none; /* 無法點擊 */
+    border: 0px;
+    background-image: repeating-linear-gradient(
+        45deg,
+        #222,
+        #222 10px,
+        #2a2a2a 10px,
+        #2a2a2a 20px
+    );
+}
+.cell.road-cell {
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.5); /* 內陰影讓路看起來凹下去 */
+}
+.cell.grass {
+    background-color: #2ecc71;
+}
+.cell {
+    width: 12px;  /* 60 / 5 */
+    height: 12px; /* 60 / 5 */
+    background-color: #555;
+    cursor: pointer;
+    position: relative;
+    border-radius: 0; /* 小格子不需要圓角 */
+}
+.cell:hover { filter: brightness(1.2); z-index: 5; outline: 2px solid white;}
+
+/* === 顧客 (新增) === */
+#customer-layer {
+    position: absolute;
+    top: 0; 
+    left: 0;
+    width: 100%; 
+    height: 100%;
+    pointer-events: none; /* 讓滑鼠可以點穿過去選格子 */
+    z-index: 100;         /* 確保蓋在格子上面 */
+    overflow: hidden;
+}
+
+.customer {
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    background-color: white;
+    border-radius: 50%;
+    box-shadow: 0 0 4px rgba(255,255,255,1);
+    z-index: 101;
+    
+    /* === 關鍵修改開始 === */
+    /* 1. 設定起始點為左上角 */
+    top: 0;
+    left: 0;
+    
+    /* 2. 使用 transform 來移動，效能更好且更滑順 */
+    /* 0.2s 必須對應 game.js 裡的 setInterval 時間 (200ms) */
+    transition: transform 0.2s linear; 
+    
+    /* 3. 告訴瀏覽器這個元素會頻繁變形，預先優化 */
+    will-change: transform;
+    /* === 關鍵修改結束 === */
+}
+
+/* === UI 與 其他 === */
+#ui-panel {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 10px;
+    background-color: #444;
+}
+
+.tool-btn {
+    padding: 10px 15px;
+    font-size: 14px;
+    cursor: pointer;
+    border: none;
+    border-radius: 6px;
+    background-color: #666;
+    color: white;
+}
+.tool-btn.active { background-color: #f1c40f; color: #000; font-weight: bold; }
+.cell-content {
+    font-size: 10px; /* 縮小字體 */
+    line-height: 12px;
+    text-align: center;
+    pointer-events: none;
+    overflow: hidden; /* 防止 Emoji 超出格子 */
+}
+/* Modal 保持原樣 */
+.modal {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex; justify-content: center; align-items: center; z-index: 3000;
+}
+.modal-content {
+    background-color: #333; padding: 20px; border: 2px solid #f1c40f;
+    border-radius: 10px; width: 300px; text-align: left;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+}
+.control-group { margin: 15px 0; }
+.action-btn { padding: 8px 16px; cursor: pointer; border-radius: 5px; border:none;}
+.action-btn.upgrade { background-color: #27ae60; color: white; width: 100%; margin-bottom: 10px; }
+input[type="text"] { width: 95%; padding: 5px; margin-top: 5px; }
+
+.small-btn {
+    background: #e67e22;
+    border: none;
+    color: white;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    margin-left: 10px;
+}
+.small-btn:hover { background: #d35400; }
+.small-btn:disabled { background: #7f8c8d; cursor: not-allowed; }
+
+#category-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 5px;
+    margin-bottom: 10px;
+    background: #222;
+    padding: 5px;
+    border-radius: 5px;
+}
+
+.tab-btn {
+    padding: 8px 12px;
+    background-color: #444;
+    color: #aaa;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    flex: 1; /* 平均分配寬度 */
+    transition: all 0.2s;
+}
+
+.tab-btn:hover {
+    background-color: #555;
+    color: white;
+}
+
+.tab-btn.active {
+    background-color: #f1c40f; /* 亮黃色 */
+    color: #222;
+    transform: translateY(-2px);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+}
+
+/* 工具按鈕容器調整 */
+#tools-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    max-height: 120px; /* 限制高度 */
+    overflow-y: auto; /* 超出可捲動 */
+}
+
+/* 讓捲軸漂亮一點 */
+#tools-container::-webkit-scrollbar {
+    width: 6px;
+}
+#tools-container::-webkit-scrollbar-thumb {
+    background: #666; 
+    border-radius: 3px;
+}
+
+/* 調整按鈕大小以適應更多內容 */
+.tool-btn {
+    width: 90px;
+    padding: 8px 5px;
+    font-size: 13px;
+}
+.naming-section {
+    margin-bottom: 30px;
+    background: #333;
+    padding: 20px;
+    border-radius: 10px;
+    border: 1px solid #555;
+}
+
+.naming-section input {
+    padding: 10px;
+    font-size: 18px;
+    border-radius: 5px;
+    border: none;
+    text-align: center;
+    width: 200px;
+}
+
+/* 劇情視窗樣式 (比管理視窗更有質感一點) */
+.story-content {
+    background: #2c3e50; /* 深藍色背景 */
+    border: 2px solid #ecf0f1;
+    max-width: 400px;
+    text-align: center;
+}
+
+#story-title {
+    color: #f1c40f;
+    border-bottom: 1px solid #7f8c8d;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}
+
+#story-text {
+    font-size: 16px;
+    line-height: 1.6;
+    color: #ecf0f1;
+    text-align: left;
+    padding: 0 10px;
+}

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>夜市大亨 - 傳奇版</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="start-screen">
+        <h1>🌃 夜市大亨</h1>
+        
+        <div class="naming-section">
+            <label>請為你的夜市取名：</label>
+            <br>
+            <input type="text" id="market-name-input" placeholder="例如：士林、逢甲..." value="興大附農">
+        </div>
+        
+        <p style="color:#aaa; margin-bottom:20px;">選擇一塊地開始經營吧！</p>
+
+        <div id="market-selection"></div>
+    </div>
+
+    <div id="game-wrapper" class="hidden">
+        <div class="header">
+            <h1><span id="night-market-title"></span>夜市</h1>
+            <div class="status-bar">
+                資金: $<span id="money-display">0</span> | 
+                人氣: <span id="people-display">0</span> | 
+                <button id="btn-expand-map" class="small-btn">擴充地圖 ($<span id="expand-cost">1000</span>)</button>
+            </div>
+        </div>
+
+        <div id="game-container">
+            <div id="grid"></div>
+            <div id="customer-layer"></div>
+        </div>
+
+        <div id="ui-panel"></div>
+    </div>
+
+    <div id="manager-modal" class="modal hidden">
+        <div class="modal-content">
+            <h2 id="modal-title">攤位名稱</h2>
+            
+            <div class="control-group">
+                <label>攤位名稱:</label>
+                <input type="text" id="custom-name-input" placeholder="幫它取個名字...">
+            </div>
+
+            <div class="stats-box">
+                </div>
+
+            <div class="btn-group">
+                </div>
+        </div>
+    </div>
+
+    <div id="story-modal" class="modal hidden">
+        <div class="modal-content story-content">
+            <h2 id="story-title">標題</h2>
+            <div id="story-text">內容...</div>
+            <button id="story-btn" class="action-btn" style="margin-top:20px; width:100%;">確定</button>
+        </div>
+    </div>
+
+    <script src="data.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>
