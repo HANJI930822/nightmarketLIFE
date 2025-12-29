@@ -300,6 +300,26 @@ const BUILDINGS = {
     'mahjong': {
         name: "麻將賓果", price: 700, icon: "🀄", color: "#27ae60", category: 'game',
         revenue: 150, cost: 10, cookTime: 6000, baseCapacity: 2
+    },
+    'oyster_omelet': {
+        name: "蚵仔煎", price: 400, icon: "🦪", color: "#27ae60", category: 'food',
+        revenue: 80, cost: 30, cookTime: 5000, baseCapacity: 2,
+        desc: "使用新鮮牡蠣，高單價的主食，適合放在人流深處。"
+    },
+    'papaya_milk': {
+        name: "木瓜牛奶", price: 250, icon: "🥛", color: "#e67e22", category: 'drink',
+        revenue: 45, cost: 15, cookTime: 2000, baseCapacity: 3,
+        desc: "濃郁香醇，搭配炸物攤位有奇效（需自行想像）。"
+    },
+    'ring_toss': {
+        name: "套圈圈", price: 500, icon: "⭕", color: "#e84393", category: 'snack', // 歸類在娛樂或小吃皆可
+        revenue: 60, cost: 5, cookTime: 3000, baseCapacity: 4,
+        desc: "暴利遊戲！雖然成本極低，但佔地較大(想像)。"
+    },
+    'bench': {
+        name: "長椅", price: 50, icon: "🪑", color: "#8d6e63", category: 'facility',
+        revenue: 0, cost: 0, cookTime: 0, baseCapacity: 0,
+        desc: "純裝飾，讓逛累的客人...其實只是裝飾。"
     }
     
 };

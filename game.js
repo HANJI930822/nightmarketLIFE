@@ -87,7 +87,6 @@ function startGame(marketKey) {
     state.inventory = {};
     state.unlockedStalls = []; // 重置解鎖列表
     state.selectedIngredients = [];
-    bindAdventureButtons(); // 綁定新按鈕
 
     // UI 切換
     document.getElementById('start-screen').style.display = 'none';
@@ -98,22 +97,32 @@ function startGame(marketKey) {
     generateMapLayout();
     initUI();
     updateMoneyDisplay();
-    updateExpandCost();
 
     // 啟動顧客系統
     initCustomerSystem();
 
     // 綁定管理視窗事件
     bindManagerEvents();
-    showStory(PROLOGUE.title, PROLOGUE.text, () => {
-        // 劇情看完後，啟動隨機事件系統
-        initEventSystem();
-    });
+    
     bindExtraButtons();
     // 綁定擴建按鈕
     const expandBtn = document.getElementById('btn-expand-map');
     if(expandBtn) expandBtn.onclick = expandMap;
+
+    initTutorial();
+
+    showStory(PROLOGUE.title, PROLOGUE.text, () => {
+        // 劇情看完後，啟動隨機事件系統
+        initEventSystem();
+    });
+
+    setInterval(() => {
+        saveGame();
+        // 如果不想一直跳出提示干擾，可以把 saveGame 裡的 showFloatingText 拿掉，或改用 console.log
+        console.log("自動存檔完成");
+    }, 60000);
 }
+
 function initEventSystem() {
     if (state.eventTimer) clearInterval(state.eventTimer);
 
@@ -171,38 +180,124 @@ function showStory(title, text, callback) {
     modal.classList.remove('hidden');
 }
 function bindExtraButtons() {
-    // 研發按鈕
-    document.getElementById('btn-create-stall').onclick = () => {
-        document.getElementById('creator-modal').classList.remove('hidden');
-        updateCreatorPreview(); // 更新預覽數值
-    };
-
-    // 清潔工按鈕
-    document.getElementById('btn-clean-all').onclick = () => {
-        if (state.money >= 500) {
-            state.money -= 500;
-            let cleaned = 0;
-            for(let key in state.gridData) {
-                if(state.gridData[key].garbage > 0) {
-                    state.gridData[key].garbage = 0;
-                    updateCellVisual(state.gridData[key]);
-                    cleaned++;
-                }
+    // 1. 【主畫面】打開選單按鈕
+    const btnMenu = document.getElementById('btn-main-menu');
+    if (btnMenu) {
+        btnMenu.onclick = () => {
+            // 更新選單內的擴充價格
+            const cost = getExpandCost();
+            const costEl = document.getElementById('menu-expand-cost');
+            if (costEl) {
+                if (state.mapSize >= CONFIG.maxGridSize) costEl.innerText = "(已最大)";
+                else costEl.innerText = `$${cost}`;
             }
-            state.totalGarbage = 0;
-            updateMoneyDisplay();
-            alert(`清潔工清理了 ${cleaned} 處垃圾！`);
-        } else {
-            alert("資金不足 $500");
-        }
-    };
+            document.getElementById('main-menu-modal').classList.remove('hidden');
+        };
+    }
 
-    // 研發確認按鈕
-    document.getElementById('btn-confirm-create').onclick = createCustomStall;
+    // === 2. 【選單內部】九宮格按鈕 ===
+
+    // A. 研發
+    const menuResearch = document.getElementById('menu-research');
+    if (menuResearch) {
+        menuResearch.onclick = () => {
+            document.getElementById('main-menu-modal').classList.add('hidden');
+            document.getElementById('creator-modal').classList.remove('hidden');
+            updateCreatorPreview();
+        };
+    }
+
+    // B. 擴充地圖
+    const menuExpand = document.getElementById('menu-expand');
+    if (menuExpand) {
+        menuExpand.onclick = expandMap;
+    }
+
+    // C. 環境清潔
+    const menuClean = document.getElementById('menu-clean');
+    if (menuClean) {
+        menuClean.onclick = () => {
+            if (state.money >= 500) {
+                state.money -= 500;
+                let cleaned = 0;
+                for (let key in state.gridData) {
+                    if (state.gridData[key].garbage > 0) {
+                        state.gridData[key].garbage = 0;
+                        updateCellVisual(state.gridData[key]);
+                        cleaned++;
+                    }
+                }
+                state.totalGarbage = 0;
+                updateMoneyDisplay();
+                updateAttractiveness();
+                alert(`🧹 大掃除完成！清理了 ${cleaned} 處垃圾，人氣回升！`);
+                document.getElementById('main-menu-modal').classList.add('hidden');
+            } else {
+                alert("資金不足 $500");
+            }
+        };
+    }
+
+    // D. 外出冒險 (對應舊的 bindAdventureButtons)
+    const menuAdventure = document.getElementById('menu-adventure');
+    if (menuAdventure) {
+        menuAdventure.onclick = () => {
+            document.getElementById('main-menu-modal').classList.add('hidden');
+            renderLocations();
+            document.getElementById('adventure-modal').classList.remove('hidden');
+        };
+    }
+
+    // E. 料理合成 (對應舊的 bindAdventureButtons)
+    const menuKitchen = document.getElementById('menu-kitchen');
+    if (menuKitchen) {
+        menuKitchen.onclick = () => {
+            document.getElementById('main-menu-modal').classList.add('hidden');
+            state.selectedIngredients = [];
+            renderInventory();
+            updateCraftingUI();
+            document.getElementById('kitchen-modal').classList.remove('hidden');
+        };
+    }
+
+    // F. 系統存檔
+    const menuSystem = document.getElementById('menu-system');
+    if (menuSystem) {
+        menuSystem.onclick = () => {
+            document.getElementById('main-menu-modal').classList.add('hidden');
+            document.getElementById('system-modal').classList.remove('hidden');
+        };
+    }
+
+    // === 3. 【各個子視窗】內部按鈕 ===
     
-    // 研發視窗的滑桿變動時更新預覽
-    document.getElementById('new-stall-price').oninput = updateCreatorPreview;
-    document.getElementById('new-stall-category').onchange = updateCreatorPreview;
+    // 研發確認
+    const btnConfirmCreate = document.getElementById('btn-confirm-create');
+    if (btnConfirmCreate) btnConfirmCreate.onclick = createCustomStall;
+    
+    // 合成確認
+    const btnCraft = document.getElementById('btn-craft');
+    if (btnCraft) btnCraft.onclick = executeCraft;
+
+    // 手動存檔
+    const btnManualSave = document.getElementById('btn-manual-save');
+    if (btnManualSave) {
+        btnManualSave.onclick = () => {
+            saveGame();
+            document.getElementById('system-modal').classList.add('hidden');
+        };
+    }
+
+    // 刪除存檔
+    const btnResetSave = document.getElementById('btn-reset-save');
+    if (btnResetSave) {
+        btnResetSave.onclick = () => {
+            if (confirm("確定要重玩嗎？")) {
+                localStorage.removeItem('nightMarketSave');
+                location.reload();
+            }
+        };
+    }
 }
 // === 新增：地圖擴充邏輯 ===
 function expandMap() {
@@ -509,9 +604,54 @@ function initUI() {
 
 function selectTool(key) {
     state.currentTool = key;
+    
+    // 1. UI 按鈕樣式更新
     document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
     const btn = document.getElementById(`btn-${key}`);
     if (btn) btn.classList.add('active');
+
+    // 2. 更新資訊面板 (Info Panel)
+    const infoPanel = document.getElementById('stall-info-panel');
+    const data = BUILDINGS[key];
+
+    if (data) {
+        infoPanel.classList.remove('hidden');
+        
+        // 基本資訊
+        document.getElementById('info-icon').innerText = data.icon || "ℹ️";
+        document.getElementById('info-name').innerText = data.name;
+        document.getElementById('info-desc').innerText = data.desc || "暫無描述";
+
+        const statsDiv = document.getElementById('info-stats');
+        
+        // 只有「非道路」且「非拆除」且「非裝飾」的建築才顯示經營數值
+        // 判斷依據：有造價且不是路
+        if (data.price > 0 && !data.isRoad && key !== 'floor') {
+            statsDiv.classList.remove('hidden');
+            
+            // 計算實際造價
+            let realPrice = Math.floor(data.price * state.marketData.buildCostMod);
+            
+            // 更新數值
+            document.getElementById('info-price').innerText = realPrice;
+            document.getElementById('info-revenue').innerText = data.revenue || 0;
+            
+            // 顯示製作時間 (毫秒轉秒)
+            let timeSec = (data.cookTime ? data.cookTime / 1000 : 0);
+            document.getElementById('info-time').innerText = timeSec;
+
+            // 顯示座位 (baseCapacity)
+            let seats = data.baseCapacity || 0;
+            if (data.category === 'facility' && !data.baseCapacity) seats = '-'; // 設施(如垃圾桶)沒座位
+            document.getElementById('info-capacity').innerText = seats;
+
+        } else {
+            // 如果是道路或拆除工具，隱藏數值區塊
+            statsDiv.classList.add('hidden');
+        }
+    } else {
+        infoPanel.classList.add('hidden');
+    }
 }
 
 function handleCellClick(cell) {
@@ -692,36 +832,83 @@ function checkCombo(key) {
 }
 
 function completeOrder(data, config) {
-    let customer = data.queue.shift(); // 移除隊列第一人
-    let comboMultiplier = checkCombo(`${data.x},${data.y}`);
+    let customer = data.queue.shift();
     
-    // 計算收支
-    let revenue = Math.floor(config.revenue * data.level * data.priceMultiplier * comboMultiplier);
-    let cost = config.cost; // 扣除成本
-    let profit = revenue - cost;
-
-    state.money += profit;
-    
-    // 視覺回饋
-    showFloatingText(data.cellElement, `+$${profit}`, "#f1c40f");
+    let revenue = Math.floor(config.revenue * data.level * data.priceMultiplier);
+    state.money += revenue - config.cost;
+    showFloatingText(data.cellElement, `+$${revenue - config.cost}`, "#f1c40f");
     updateMoneyDisplay();
 
-    // 讓客人離開 (變成吃東西狀態)
     if (customer) {
-        customer.state = 'eating';
-        customer.eatingTimer = 20; // 吃 20 個 tick
-        // 讓客人重新出現在地圖上 (原本排隊時是隱藏的或疊在店裡)
+        // 1. 重新顯示
         customer.el.style.display = 'block';
-        customer.el.style.left = (data.x * 12 + 4) + 'px'; // 從店門口出來
-        customer.el.style.top = (data.y * 12 + 4) + 'px';
-        customer.gx = data.x;
-        customer.gy = data.y;
+        
+        // 決定狀態 (邊走邊吃 或 原地吃)
+        if (Math.random() < 0.5) {
+            customer.state = 'walking_eating';
+            customer.eatingTimer = 20; 
+            customer.el.style.backgroundColor = '#f1c40f';
+        } else {
+            customer.state = 'eating';
+            customer.eatingTimer = 4;
+            customer.el.style.backgroundColor = '#f1c40f';
+        }
+
+        // 設定為離場
+        customer.isLeaving = true; 
+
+        // 找附近的道路
+        let safePlace = findNearbyRoad(data.x, data.y);
+        customer.gx = safePlace.x;
+        customer.gy = safePlace.y;
+
+        // 重置參數
+        customer.lastGx = -1; customer.lastGy = -1;
+        customer.moveCooldown = 0;
+
+        // === 關鍵修改：瞬移處理 ===
+        // 1. 先暫時移除過渡效果 (瞬移)
+        customer.el.style.transition = 'none';
+
+        // 2. 計算新位置
+        let randX = Math.random() * 8 + 2;
+        let randY = Math.random() * 8 + 2;
+        customer.offsetX = randX; customer.offsetY = randY;
+        
+        let pixelX = customer.gx * 12 + randX;
+        let pixelY = customer.gy * 12 + randY;
+        
+        // 3. 設定新座標 (因為沒 transition，會瞬間到達)
+        customer.el.style.transform = `translate3d(${pixelX}px, ${pixelY}px, 0)`;
+
+        // 4. 強制瀏覽器重繪 (Reflow)，確保上面的設定生效
+        void customer.el.offsetWidth; 
+
+        // 5. 加回過渡效果 (讓之後的移動變回平滑)
+        customer.el.style.transition = 'transform 0.5s linear';
     }
 
-    // 重置攤位狀態
     data.status = 'idle';
     data.cookingProgress = 0;
     data.currentOrder = null;
+}
+
+// === 新增輔助函式：尋找附近的道路 ===
+function findNearbyRoad(cx, cy) {
+    const neighbors = [
+        {x: cx, y: cy + 1}, {x: cx, y: cy - 1},
+        {x: cx + 1, y: cy}, {x: cx - 1, y: cy}
+    ];
+    
+    // 優先找是道路的格子
+    for (let n of neighbors) {
+        let key = `${n.x},${n.y}`;
+        if (state.gridData[key] && state.gridData[key].isRoad) {
+            return n;
+        }
+    }
+    // 如果四周都沒路(被包圍)，只好留在原地
+    return {x: cx, y: cy};
 }
 
 function updateStallVisual(data, text) {
@@ -873,169 +1060,286 @@ function initCustomerSystem() {
 }
 
 function updateAttractiveness() {
-    let total = 0;
+    let totalLevels = 0;
+    let varietySet = new Set(); 
+
+    // 統計場上建築
     for(let key in state.gridData) {
         let item = state.gridData[key];
-        if (BUILDINGS[item.type] && BUILDINGS[item.type].revenue > 0) {
-            total += item.level;
+        // 只有「會賺錢」或「設施」才算人氣 (道路不算)
+        if (BUILDINGS[item.type] && (BUILDINGS[item.type].revenue > 0 || BUILDINGS[item.type].category === 'facility')) {
+            totalLevels += item.level;
+            varietySet.add(item.type);
         }
     }
-    // 垃圾懲罰：每個垃圾扣 1 點吸引力
-    total -= state.totalGarbage; 
-    if(total < 0) total = 0; // 最低為 0
     
-    state.totalAttractiveness = total;
+    // 垃圾嚴重扣分 (開羅遊戲很重視環境)
+    let garbagePenalty = state.totalGarbage * 5; 
+
+    // === 開羅式公式：多樣性是關鍵 ===
+    // 基礎分 = 總等級
+    // 多樣性加成 = 種類數 ^ 1.5 * 10
+    // 這樣鼓勵玩家蓋不同種類的店
+    let rawScore = totalLevels + Math.floor(Math.pow(varietySet.size, 1.5) * 10);
+    
+    let finalScore = rawScore - garbagePenalty;
+    if(finalScore < 0) finalScore = 0;
+    
+    // 如果人氣有變化，顯示飄字特效 (僅當數值增加時)
+    if (finalScore > state.totalAttractiveness) {
+        showFloatingText(document.body, `❤️ 人氣上升!`, "#e84393");
+    } else if (finalScore < state.totalAttractiveness) {
+        // showFloatingText(document.body, `💔 人氣下降...`, "#7f8c8d");
+    }
+
+    state.totalAttractiveness = finalScore;
+    
+    // 更新介面
+    document.getElementById('people-display').innerText = state.totalAttractiveness;
 }
 
 // === 修改後的顧客移動邏輯 (平滑 + 隨機偏移版) ===
 function updateCustomers() {
     const layer = document.getElementById('customer-layer');
     
-    // 1. 建立密度地圖 (計算每格幾個人)
+    // 1. 建立密度地圖 (用於計算擁擠程度)
     let densityMap = {};
     state.customers.forEach(c => {
         let key = `${c.gx},${c.gy}`;
         densityMap[key] = (densityMap[key] || 0) + 1;
     });
 
-    // 更新介面人數
-    let targetCount = Math.floor((5 + state.totalAttractiveness) * state.marketData.trafficRate * state.trafficMultiplier);
-    if (targetCount > 100) targetCount = 100;
+    // 2. 計算目標人數 (非線性成長公式)
+    // 公式： (總等級 ^ 0.6) * 5 * 流量倍率
+    // 這讓遊戲後期人數不會無限暴增，維持效能
+    let baseCount = 5 + state.totalAttractiveness;
+    // 確保至少有 5 人，且不超過 150 人 (避免瀏覽器卡死)
+    let maxLimit = 150; 
+    let targetCount = Math.min(maxLimit, baseCount);
+    
+    // 套用倍率 (例如隨機事件)
+targetCount = Math.floor(targetCount * state.marketData.trafficRate * state.trafficMultiplier);    
+    // 更新介面顯示
     document.getElementById('people-display').innerText = state.customers.length;
 
-    // 2. 生成新顧客
+    // 3. 自動補人機制：如果目前人數 < 目標人數，就生成新客人
     if (state.customers.length < targetCount) {
         let spawnPoints = findSpawnPoints();
-        spawnPoints.sort(() => Math.random() - 0.5);
-
+        
+        // 隨機打亂生成點，避免大家都從同一個洞出來
         if (spawnPoints.length > 0) {
-            for (let pt of spawnPoints) {
+            // 每次嘗試生成 1~2 人，避免瞬間爆量
+            let spawnLimit = 2;
+            
+            while (spawnLimit > 0 && state.customers.length < targetCount) {
+                let pt = spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
                 let key = `${pt.x},${pt.y}`;
-                // 入口太擠就不生
-                if (densityMap[key] && densityMap[key] > 0) continue;
+                
+                // 如果入口太擠 (超過3人) 就不生了，稍微等一下
+                if (densityMap[key] && densityMap[key] > 3) break;
 
+                // 建立 DOM
                 let cDiv = document.createElement('div');
                 cDiv.className = 'customer';
                 
-                // === 新增：隨機偏移量 (讓客人不會排一直線) ===
-                // 格子寬 12px，人寬 6px，所以有 6px 的空間可以亂走
                 let randX = Math.random() * 6; 
                 let randY = Math.random() * 6;
-
-                // 初始位置設定
                 let pixelX = pt.x * 12 + randX;
                 let pixelY = pt.y * 12 + randY;
                 cDiv.style.transform = `translate3d(${pixelX}px, ${pixelY}px, 0)`;
                 
                 layer.appendChild(cDiv);
 
+                // 加入資料結構
                 state.customers.push({
                     el: cDiv,
                     gx: pt.x, gy: pt.y, 
                     lastGx: -1, lastGy: -1,
                     state: 'walking',
                     moveCooldown: 0,
-                    patience: 500,
-                    // 記住這個人的專屬偏移量
+                    patience: 500,        // 耐心
                     offsetX: randX,
-                    offsetY: randY
+                    offsetY: randY,
+                    shoppingCooldown: 0,  // 購物冷卻
+                    isLeaving: false,     // 是否準備離場
+                    eatingTimer: 0
                 });
-                break; 
+                
+                spawnLimit--;
             }
         }
     }
 
-    // 3. 移動邏輯
+    // 4. 處理所有顧客的邏輯 (倒序迴圈，方便移除陣列元素)
     for (let i = state.customers.length - 1; i >= 0; i--) {
         let c = state.customers[i];
 
-        // 狀態 A: 排隊 (隱藏)
+        // --- 狀態 A: 排隊中 (隱藏) ---
         if (c.state === 'queueing') {
             c.el.style.display = 'none';
             continue;
         }
 
-        // 狀態 B: 吃東西
+        // --- 狀態 B: 原地吃東西 ---
         if (c.state === 'eating') {
             c.el.style.display = 'block';
             c.eatingTimer--;
+            
             if (c.eatingTimer <= 0) {
-                c.state = 'walking';
-                c.patience = 500;
+                // 吃完了
                 c.el.style.backgroundColor = 'white';
                 tryDropGarbage(c.gx, c.gy);
+                
+                // 判斷下一步：離場 或是 繼續逛
+                if (c.isLeaving) c.state = 'leaving';
+                else c.state = 'walking';
             } else {
                 c.el.style.backgroundColor = '#f1c40f'; // 黃色
             }
-            continue; 
+            continue; // 原地吃，不移動
         }
 
-        // 狀態 C: 走路
-        if (c.state === 'walking') {
+        // --- 狀態 C: 邊走邊吃 ---
+        if (c.state === 'walking_eating') {
             c.el.style.display = 'block';
-            c.patience--;
-
-            // 耐心變色
-            if (c.patience < 150) c.el.style.backgroundColor = '#e74c3c';
-            else c.el.style.backgroundColor = 'white';
-
-            // 餓死離場
-            if (c.patience <= 0) {
-                showTextAt(c.gx, c.gy, "😡餓!");
-                c.el.remove();
-                state.customers.splice(i, 1);
-                continue;
-            }
-
-            // 進店判斷
-            let shop = findShopAvailable(c.gx, c.gy);
-            if (shop) {
-                shop.queue.push(c);
-                c.state = 'queueing';
-                continue;
-            }
-
-            // 移動冷卻
-            if (c.moveCooldown > 0) {
-                c.moveCooldown--;
-                continue;
-            }
-
-            // 尋路
-            let nextMove = getNextStep(c.gx, c.gy, c.lastGx, c.lastGy);
+            c.eatingTimer--;
             
-            if (nextMove) {
-                let cost = calculateMoveCost(nextMove.x, nextMove.y, densityMap);
-                if (c.lastGx === -1) cost = 0; // 新手保護
+            if (c.eatingTimer <= 0) {
+                c.el.style.backgroundColor = 'white';
+                tryDropGarbage(c.gx, c.gy);
+                
+                if (c.isLeaving) c.state = 'leaving';
+                else c.state = 'walking';
+            }
+            // 這裡不 continue，因為他要邊走邊吃
+        }
 
-                c.moveCooldown = cost;
-                c.lastGx = c.gx; c.lastGy = c.gy;
-                c.gx = nextMove.x; c.gy = nextMove.y;
-                
-                // === 關鍵修改：使用 transform 移動 + 加上隨機偏移 ===
-                // 這樣每個人走的路徑會稍微錯開，看起來比較自然
-                let stepRandX = Math.random() * 10; // 0~10px 的浮動範圍 (格子12px)
-                let stepRandY = Math.random() * 10; 
-                
-                let pixelX = c.gx * 12 + stepRandX;
-                let pixelY = c.gy * 12 + stepRandY;
-                
-                c.el.style.transform = `translate3d(${pixelX}px, ${pixelY}px, 0)`;
+        // --- 狀態 D: 走路 / 離場 / 邊走邊吃 ---
+        
+        // 1. 離場檢測
+        if (c.state === 'leaving') {
+            c.el.style.backgroundColor = '#95a5a6'; // 變成灰色
+            
+            // 檢查是否到達地圖邊緣
+            let limit = state.mapSize - 1;
+            // 寬容度設為 <=1 和 >= limit-1，避免卡在最後一步
+            if (c.gx <= 0 || c.gy <= 0 || c.gx >= limit || c.gy >= limit) {
+                c.el.remove();              // 移除 DOM
+                state.customers.splice(i, 1); // 移除資料
+                continue;
+            }
+        }
 
-                c.el.style.transform += ` rotate(${Math.random() * 30 - 15}deg)`;
-                
-            } else {
-                // 死路處理
-                if (c.lastGx !== -1 && Math.random() > 0.9) {
-                    c.el.remove();
-                    state.customers.splice(i, 1);
-                } else {
-                    c.lastGx = -1; c.lastGy = -1;
+        // 2. 移動冷卻 (沒冷卻才能動)
+        if (c.moveCooldown > 0) {
+            c.moveCooldown--;
+            continue;
+        }
+
+        // 3. 決定下一步要去哪
+        let nextMove = null;
+
+        if (c.state === 'leaving') {
+            // 如果要離場，呼叫離場導航
+            nextMove = getExitStep(c.gx, c.gy, c.lastGx, c.lastGy);
+        } else {
+            // 正常逛街
+            
+            // 減少購物冷卻
+            if (c.shoppingCooldown > 0) c.shoppingCooldown--;
+            
+            // 減少耐心
+            c.patience--;
+            if (c.patience <= 0) {
+                // 耐心沒了，強制離場
+                c.state = 'leaving';
+                c.isLeaving = true;
+                showTextAt(c.gx, c.gy, "😡");
+                continue;
+            }
+
+            // 嘗試進店 (只有沒冷卻且不是邊走邊吃時)
+            if (c.shoppingCooldown <= 0 && c.state !== 'walking_eating') {
+                let shop = findShopAvailable(c.gx, c.gy);
+                if (shop) {
+                    shop.queue.push(c);
+                    c.state = 'queueing';
+                    continue;
                 }
             }
+
+            // 呼叫一般導航
+            nextMove = getNextStep(c.gx, c.gy, c.lastGx, c.lastGy);
+        }
+
+        // 4. 執行移動
+        if (nextMove) {
+            // 計算移動成本 (速度)
+            let cost = calculateMoveCost(nextMove.x, nextMove.y, densityMap);
+            
+            // 特殊狀態速度調整
+            if (c.state === 'walking_eating') cost = Math.max(cost, 2) * 4; // 邊走邊吃：極慢
+            if (c.state === 'leaving') cost = Math.floor(cost / 2);         // 離場：快步離開
+
+            c.moveCooldown = cost;
+            c.lastGx = c.gx; c.lastGy = c.gy;
+            c.gx = nextMove.x; c.gy = nextMove.y;
+            
+            // 更新畫面 (使用 transform)
+            let pixelX = c.gx * 12 + c.offsetX;
+            let pixelY = c.gy * 12 + c.offsetY;
+            c.el.style.transform = `translate3d(${pixelX}px, ${pixelY}px, 0)`;
+            
+        } else {
+            // 沒路走 (死路)，重置上一步記憶，試著回頭
+            c.lastGx = -1; 
+            c.lastGy = -1;
         }
     }
 }
+
+function getExitStep(currX, currY, lastX, lastY) {
+    const limit = state.mapSize - 1;
+    const neighbors = [
+        {x: currX, y: currY - 1}, 
+        {x: currX, y: currY + 1}, 
+        {x: currX - 1, y: currY}, 
+        {x: currX + 1, y: currY} 
+    ];
+
+    // 目標：找到距離「最近邊界」更近的格子
+    // 邊界距離公式： min(x, y, limit-x, limit-y)
+    
+    let currentDist = Math.min(currX, currY, limit - currX, limit - currY);
+    
+    // 隨機打亂，避免所有人走同一條路線
+    neighbors.sort(() => Math.random() - 0.5);
+
+    for (let n of neighbors) {
+        // 邊界檢查
+        if (n.x < 0 || n.y < 0 || n.x > limit || n.y > limit) continue;
+
+        let key = `${n.x},${n.y}`;
+        let cell = state.gridData[key];
+        
+        // 只能走道路 (或是還沒解鎖的空地，視為可通行以便逃生)
+        if (cell && !cell.isRoad) continue; 
+
+        // 不走回頭路 (除非死路)
+        if (n.x === lastX && n.y === lastY) continue;
+
+        let dist = Math.min(n.x, n.y, limit - n.x, limit - n.y);
+        
+        // 如果這一格比現在更近 (或等於，允許平行移動)，就走這一步
+        if (dist <= currentDist) {
+            return n;
+        }
+    }
+    
+    // 真的無路可走，只好回頭
+    return {x: lastX, y: lastY};
+}
+
 function tryDropGarbage(x, y) {
     // 30% 機率亂丟垃圾
     if (Math.random() < 0.3) {
@@ -1105,15 +1409,24 @@ function calculateMoveCost(targetX, targetY, densityMap) {
 // === 尋找邊緣道路 (生成點) ===
 function findSpawnPoints() {
     let points = [];
+    // 目前解鎖的地圖大小
+    const currentSize = state.mapSize;
+
     for (let key in state.gridData) {
         let tile = state.gridData[key];
-        // 必須是道路
-        if (tile.isRoad) {
-            // 必須在目前地圖的邊緣
-            if (tile.x === 0 || tile.y === 0 || 
-                tile.x === state.mapSize - 1 || tile.y === state.mapSize - 1) {
-                points.push({x: tile.x, y: tile.y});
-            }
+        
+        // 1. 必須是道路
+        if (!tile.isRoad) continue;
+
+        // 2. 嚴格檢查：必須在目前解鎖範圍內
+        // 如果座標大於等於 currentSize，代表在鎖定區域，跳過
+        if (tile.x >= currentSize || tile.y >= currentSize) continue;
+
+        // 3. 找出「邊緣」道路作為入口
+        // 邊緣定義：X或Y 是 0，或者 X或Y 是目前的邊界-1
+        if (tile.x === 0 || tile.y === 0 || 
+            tile.x === currentSize - 1 || tile.y === currentSize - 1) {
+            points.push({x: tile.x, y: tile.y});
         }
     }
     return points;
@@ -1144,14 +1457,17 @@ function getNextStep(currX, currY, lastX, lastY) {
     ];
     
     let validMoves = [];
+    // 目前解鎖邊界
+    const limit = state.mapSize; 
 
     for (let n of neighbors) {
         let nx = currX + n.dx;
         let ny = currY + n.dy;
         
-        // 邊界檢查
-        if (nx < 0 || ny < 0 || nx >= CONFIG.maxGridSize || ny >= CONFIG.maxGridSize) continue;
-        if (nx >= state.mapSize || ny >= state.mapSize) continue; // 未解鎖區域
+        // === 關鍵修正 ===
+        // 邊界檢查：不能小於 0，也「不能大於等於」目前解鎖的大小 (limit)
+        // 這樣他們就不會走進鎖定的黑色區域了
+        if (nx < 0 || ny < 0 || nx >= limit || ny >= limit) continue;
 
         // 規則：不能回頭 (除非只有回頭路)
         if (nx !== lastX || ny !== lastY) {
@@ -1159,25 +1475,27 @@ function getNextStep(currX, currY, lastX, lastY) {
         }
     }
 
-    // 如果是死路 (沒有 validMoves)，則允許回頭
+    // 死路處理：如果沒路可走 (validMoves 為空)，允許回頭
     if (validMoves.length === 0) {
-        // 如果連回頭路都沒有 (卡在單格孤島)，回傳 null
         if (lastX === -1) return null; 
         return {x: lastX, y: lastY};
     }
 
-    // 優先權邏輯：
+    // --- 以下邏輯保持不變 (隨機亂鑽與道路優先) ---
+    
     // 1. 找出所有是「道路」的選項
     let roadMoves = validMoves.filter(m => {
         let k = `${m.x},${m.y}`;
+        // 確保該格資料存在且是道路
         return state.gridData[k] && state.gridData[k].isRoad;
     });
 
+    // 2. 40% 機率乖乖走道路，60% 機率亂鑽
     if (roadMoves.length > 0 && Math.random() < 0.4) {
         return roadMoves[Math.floor(Math.random() * roadMoves.length)];
     }
 
-    // 隨機選一個 (亂鑽)
+    // 3. 隨機選一個
     return validMoves[Math.floor(Math.random() * validMoves.length)];
 }
 
@@ -1323,27 +1641,6 @@ function findMarketKey(dataObj) {
         if(MARKETS[k] === dataObj) return k;
     }
     return 'school';
-}
-
-// === 自動存檔 (加在 initStartScreen 或 startGame 裡) ===
-// setInterval(saveGame, 60000); // 每分鐘自動存檔
-function bindAdventureButtons() {
-    // 打開冒險地圖
-    document.getElementById('btn-adventure').onclick = () => {
-        renderLocations();
-        document.getElementById('adventure-modal').classList.remove('hidden');
-    };
-
-    // 打開廚房
-    document.getElementById('btn-kitchen').onclick = () => {
-        state.selectedIngredients = []; // 重置選取
-        renderInventory();
-        updateCraftingUI();
-        document.getElementById('kitchen-modal').classList.remove('hidden');
-    };
-
-    // 執行合成
-    document.getElementById('btn-craft').onclick = executeCraft;
 }
 
 // --- 冒險邏輯 ---
@@ -1518,4 +1815,72 @@ function executeCraft() {
     state.selectedIngredients = [];
     renderInventory();
     updateCraftingUI();
+}
+
+let tutorialStep = 0;
+const TUTORIAL_STEPS = [
+    {
+        title: "歡迎來到夜市！",
+        text: "這是一片荒地，但你將把它變成黃金地段！<br>點擊「下一步」開始學習如何經營。",
+        targetId: null
+    },
+    {
+        title: "1. 鋪設道路",
+        text: "客人需要路才進得來。<br>請切換到「設施」分類，選擇「道路」，並確保連通外部入口。",
+        targetId: "category-tabs" // 高亮分類標籤
+    },
+    {
+        title: "2. 建造攤位",
+        text: "選擇一個小吃攤位（如大雞排），蓋在道路旁邊。<br>客人會自動排隊購買。",
+        targetId: "tools-container" // 高亮工具列
+    },
+    {
+        title: "3. 擴充地圖",
+        text: "當生意變好時，記得點擊上方的「擴充地圖」來解鎖更多土地！",
+        targetId: "btn-expand-map" // 高亮擴充按鈕
+    },
+    {
+        title: "開始賺錢吧！",
+        text: "注意垃圾清潔與資金周轉，祝你發大財！",
+        targetId: null
+    }
+];
+
+function initTutorial() {
+    // 檢查是否第一次玩 (這裡簡單用 localStorage 判斷，或者每次開新局都顯示)
+    // if (localStorage.getItem('hasPlayed')) return; 
+    
+    tutorialStep = 0;
+    showTutorialStep();
+}
+
+function showTutorialStep() {
+    const step = TUTORIAL_STEPS[tutorialStep];
+    const overlay = document.getElementById('tutorial-overlay');
+    const box = document.getElementById('tutorial-box');
+    
+    // 移除舊的高亮
+    document.querySelectorAll('.highlight-element').forEach(el => el.classList.remove('highlight-element'));
+
+    if (!step) {
+        overlay.classList.add('hidden'); // 結束教學
+        // localStorage.setItem('hasPlayed', 'true');
+        return;
+    }
+
+    overlay.classList.remove('hidden');
+    document.getElementById('tut-title').innerText = step.title;
+    document.getElementById('tut-text').innerHTML = step.text;
+
+    // 高亮目標元素
+    if (step.targetId) {
+        const target = document.getElementById(step.targetId);
+        if (target) target.classList.add('highlight-element');
+    }
+
+    // 按鈕事件
+    document.getElementById('tut-next-btn').onclick = () => {
+        tutorialStep++;
+        showTutorialStep();
+    };
 }

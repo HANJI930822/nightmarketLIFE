@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>夜市大亨 - 傳奇版</title>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -15,20 +15,23 @@
             <label>請為你的夜市取名：</label>
             <br>
             <input type="text" id="market-name-input" placeholder="例如：士林、逢甲..." value="興大附農">
-        </div>
+            </div>
         
         <p style="color:#aaa; margin-bottom:20px;">選擇一塊地開始經營吧！</p>
 
-        <div id="market-selection"></div>
+        <div id="market-selection">
+            </div>
     </div>
 
     <div id="game-wrapper" class="hidden">
+        
         <div class="header">
-            <h1><span id="night-market-title"></span>夜市</h1>
-            <div class="status-bar">
-                資金: $<span id="money-display">0</span> | 
-                人氣: <span id="people-display">0</span> | 
-                <button id="btn-expand-map" class="small-btn">擴充地圖 ($<span id="expand-cost">1000</span>)</button>
+            <div class="header-row">
+                <span id="night-market-title" style="font-weight:bold; color:#f1c40f; font-size:1.2rem;"></span>
+                <div style="display:flex; gap:10px;">
+                    <span class="stat-badge">💰 <span id="money-display">0</span></span>
+                    <span class="stat-badge">❤️ 人氣: <span id="people-display">0</span></span>
+                </div>
             </div>
         </div>
 
@@ -36,31 +39,86 @@
             <div id="map-wrapper">
                 <div id="grid"></div>
                 <div id="customer-layer"></div>
-            </div>  
+            </div>
         </div>
 
-        <div id="extra-panel" style="text-align:center; margin-top:10px;">
-            <button id="btn-create-stall" class="action-btn" style="background:#8e44ad; color:white;">✨ 研發新攤位 ($5000)</button>
-            <button id="btn-clean-all" class="action-btn" style="background:#27ae60; color:white;">🧹 請清潔工 ($500)</button>
-            <button id="btn-adventure" class="action-btn" style="background:#e67e22; color:white;">🗺️ 外出冒險</button>
-            <button id="btn-kitchen" class="action-btn" style="background:#d35400; color:white;">🔥 研發廚房</button>
-        </div>
+        <div id="ui-panel">
+            
+            <div id="stall-info-panel" class="hidden">
+                <div class="info-header">
+                    <span id="info-icon"></span> <strong id="info-name"></strong>
+                </div>
+                <div id="info-desc" style="color:#bdc3c7; font-size:12px; margin-bottom:5px;"></div>
+                
+                <div id="info-stats" class="hidden">
+                    <span class="tag">💰 <span id="info-price">0</span></span>
+                    <span class="tag">💵 <span id="info-revenue">0</span></span>
+                    <span class="tag">⏳ <span id="info-time">0</span>s</span>
+                    <span class="tag">🪑 <span id="info-capacity">0</span></span>
+                </div>
+            </div>
 
-        <div id="ui-panel"></div>
+            <div class="controls-row">
+                <div id="category-tabs"></div> <button id="btn-main-menu" class="menu-btn">
+                    <div style="font-size:20px; line-height:1;">🍔</div>
+                    <small style="font-size:10px;">選單</small>
+                </button>
+            </div>
+
+            <div id="tools-container"></div>
+        </div>
+    </div>
+
+    <div id="main-menu-modal" class="modal hidden">
+        <div class="modal-content" style="width: 320px; background: #2c3e50; border: 3px solid #fff;">
+            <h2 style="color:#f1c40f; text-align:center; margin-bottom:15px; border-bottom:1px dashed #777; padding-bottom:10px;">
+                📋 經營選單
+            </h2>
+            
+            <div class="menu-grid">
+                <div class="menu-item" id="menu-research">
+                    <div class="icon">✨</div>
+                    <div class="label">研發攤位</div>
+                </div>
+                <div class="menu-item" id="menu-expand">
+                    <div class="icon">🚧</div>
+                    <div class="label">擴充地圖</div>
+                    <small id="menu-expand-cost" style="color:#2ecc71; font-size:10px; display:block; margin-top:2px;">$1000</small>
+                </div>
+                <div class="menu-item" id="menu-clean">
+                    <div class="icon">🧹</div>
+                    <div class="label">環境清潔</div>
+                    <small style="color:#2ecc71; font-size:10px; display:block; margin-top:2px;">$500</small>
+                </div>
+                <div class="menu-item" id="menu-adventure">
+                    <div class="icon">🗺️</div>
+                    <div class="label">外出冒險</div>
+                </div>
+                <div class="menu-item" id="menu-kitchen">
+                    <div class="icon">🔥</div>
+                    <div class="label">料理合成</div>
+                </div>
+                <div class="menu-item" id="menu-system">
+                    <div class="icon">⚙️</div>
+                    <div class="label">系統存檔</div>
+                </div>
+            </div>
+
+            <button onclick="document.getElementById('main-menu-modal').classList.add('hidden')" class="action-btn" style="width:100%; margin-top:20px; background:#95a5a6;">
+                返回遊戲
+            </button>
+        </div>
     </div>
 
     <div id="manager-modal" class="modal hidden">
         <div class="modal-content">
             <h2 id="modal-title">攤位名稱</h2>
-            
             <div class="control-group">
                 <label>攤位名稱:</label>
-                <input type="text" id="custom-name-input" placeholder="幫它取個名字...">
+                <input type="text" id="custom-name-input" placeholder="自訂名稱...">
             </div>
-
-            <div class="stats-box">
+            <div class="stats-box" style="background:#222; padding:10px; border-radius:5px; margin-bottom:10px; font-size:0.9em; line-height:1.6;">
                 </div>
-
             <div class="btn-group">
                 </div>
         </div>
@@ -85,7 +143,7 @@
 
             <div class="control-group">
                 <label>選擇圖示:</label>
-                <select id="new-stall-icon" style="font-size:20px; padding:5px;">
+                <select id="new-stall-icon" style="font-size:20px;">
                     <option value="🍔">🍔</option> <option value="🍟">🍟</option>
                     <option value="🍕">🍕</option> <option value="🥪">🥪</option>
                     <option value="🍜">🍜</option> <option value="🍣">🍣</option>
@@ -119,8 +177,8 @@
             <h2>🗺️ 選擇冒險地點</h2>
             <div id="location-list" class="grid-list">
                 </div>
-            <div id="adventure-status" style="margin-top:20px; color:#f1c40f;">狀態: 閒置中</div>
-            <button onclick="document.getElementById('adventure-modal').classList.add('hidden')" class="action-btn">離開</button>
+            <div id="adventure-status" style="margin-top:20px; color:#f1c40f; text-align:center;">狀態: 閒置中</div>
+            <button onclick="document.getElementById('adventure-modal').classList.add('hidden')" class="action-btn" style="width:100%; margin-top:10px;">離開</button>
         </div>
     </div>
 
@@ -145,7 +203,34 @@
                 <button id="btn-craft" class="action-btn upgrade" disabled>開始研發</button>
             </div>
 
-            <button onclick="document.getElementById('kitchen-modal').classList.add('hidden')" class="action-btn" style="margin-top:10px;">關閉</button>
+            <button onclick="document.getElementById('kitchen-modal').classList.add('hidden')" class="action-btn" style="margin-top:10px; width:100%;">關閉</button>
+        </div>
+    </div>
+
+    <div id="system-modal" class="modal hidden">
+        <div class="modal-content" style="text-align:center; width: 300px;">
+            <h2>⚙️ 系統選單</h2>
+            <p style="color:#aaa; font-size:14px; margin-bottom:15px;">遊戲每 60 秒自動存檔</p>
+            
+            <button id="btn-manual-save" class="action-btn" style="width:100%; background:#27ae60; color:white; margin-bottom:10px; padding:12px;">
+                💾 手動存檔
+            </button>
+            
+            <button id="btn-reset-save" class="action-btn" style="width:100%; background:#c0392b; color:white; margin-bottom:10px; padding:12px;">
+                🗑️ 刪除存檔 (重玩)
+            </button>
+
+            <button onclick="document.getElementById('system-modal').classList.add('hidden')" class="action-btn" style="width:100%;">
+                關閉
+            </button>
+        </div>
+    </div>
+
+    <div id="tutorial-overlay" class="hidden">
+        <div id="tutorial-box">
+            <h2 id="tut-title" style="color:#f1c40f;">歡迎來到夜市大亨！</h2>
+            <p id="tut-text" style="margin:15px 0; font-size:14px; line-height:1.5;">這裡是你的夜市，目標是成為全台最賺錢的夜市王！</p>
+            <button id="tut-next-btn" class="action-btn" style="background:#f1c40f; color:black; width:100%;">下一步</button>
         </div>
     </div>
 
